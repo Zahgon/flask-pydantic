@@ -4,7 +4,7 @@ from typing import List, Optional
 import pytest
 from flask import jsonify, request
 from flask_pydantic import ValidationError, validate
-from pydantic.v1 import BaseModel
+from pydantic.v1 import BaseModel, root_validator, validator
 
 from ...util import assert_matches
 
@@ -147,6 +147,32 @@ def app_with_camel_route(app):
             result_of_addition=query.x + query.y,
             result_of_multiplication=query.x * query.y,
         )
+
+
+@pytest.fixture
+def app_with_field_and_root_validators(app):
+    class RequestModel(BaseModel):
+        value: str
+        other: str
+
+        @validator("value", allow_reuse=True)
+        def must_be_foo(cls, v):
+            if v != "foo":
+                raise ValueError("value must be foo")
+            return v
+
+        @root_validator(allow_reuse=True)
+        def check_other(cls, values):
+            if values.get("other") != "ok":
+                raise ValueError("other must be ok")
+            return values
+
+    @app.route("/validate", methods=["POST"])
+    @validate()
+    def handler(body: RequestModel):
+        return body
+
+    return app
 
 
 test_cases = [
@@ -449,3 +475,42 @@ class TestCustomResponse:
             response.json["body"],
         )
         assert response.status_code == 422
+
+
+@pytest.mark.usefixtures("app_with_field_and_root_validators")
+class TestValidatorResponse:
+    def test_fail_field_validator(self, client):
+        response = client.post("/validate", json={"value": "foo1", "other": "ok"})
+
+        assert_matches(
+            {
+                "validation_error": {
+                    "body_params": [
+                        {
+                            "loc": ["value"],
+                            "msg": "value must be foo",
+                            "type": "value_error",
+                        }
+                    ]
+                }
+            },
+            response.json,
+        )
+
+    def test_fail_model_validator(self, client):
+        response = client.post("/validate", json={"value": "foo", "other": "no"})
+
+        assert_matches(
+            {
+                "validation_error": {
+                    "body_params": [
+                        {
+                            "loc": ["__root__"],
+                            "msg": "other must be ok",
+                            "type": "value_error",
+                        }
+                    ]
+                }
+            },
+            response.json,
+        )

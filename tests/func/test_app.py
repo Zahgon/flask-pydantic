@@ -5,7 +5,7 @@ from typing import List, Optional
 import pytest
 from flask import jsonify, request
 from flask_pydantic import ValidationError, validate
-from pydantic import BaseModel, ConfigDict, RootModel
+from pydantic import BaseModel, ConfigDict, RootModel, field_validator, model_validator
 
 from ..util import assert_matches
 
@@ -161,6 +161,32 @@ def app_with_async_route(app):
     async def compute(body: RequestModel):
         await asyncio.sleep(0.1)
         return ResultModel(result=2 * body.n)
+
+
+@pytest.fixture
+def app_with_field_and_model_validators(app):
+    class RequestModel(BaseModel):
+        value: str
+        other: str
+
+        @field_validator("value")
+        def must_be_foo(cls, v):
+            if v != "foo":
+                raise ValueError("value must be foo")
+            return v
+
+        @model_validator(mode="after")
+        def check_other(self):
+            if self.other != "ok":
+                raise ValueError("other must be ok")
+            return self
+
+    @app.route("/validate", methods=["POST"])
+    @validate()
+    def handler(body: RequestModel):
+        return body
+
+    return app
 
 
 test_cases = [
@@ -516,3 +542,62 @@ class TestAsyncRoute:
         response = client.post("/compute", json={"n": 1})
 
         assert_matches(expected_response, response.json)
+
+
+@pytest.mark.usefixtures("app_with_field_and_model_validators")
+class TestValidatorResponse:
+    def test_fail_field_validator(self, client):
+        response = client.post("/validate", json={"value": "foo1", "other": "ok"})
+
+        assert_matches(
+            {
+                "validation_error": {
+                    "body_params": [
+                        {
+                            "input": "foo1",
+                            "loc": ["value"],
+                            "msg": "Value error, value must be foo",
+                            "type": "value_error",
+                            "url": re.compile(
+                                r"https://errors\.pydantic\.dev/.*/v/value_error"
+                            ),
+                            "ctx": {
+                                "error": {
+                                    "message": "value must be foo",
+                                    "type": "ValueError",
+                                }
+                            },
+                        }
+                    ]
+                }
+            },
+            response.json,
+        )
+
+    def test_fail_model_validator(self, client):
+        response = client.post("/validate", json={"value": "foo", "other": "no"})
+
+        assert_matches(
+            {
+                "validation_error": {
+                    "body_params": [
+                        {
+                            "input": {"value": "foo", "other": "no"},
+                            "loc": [],
+                            "msg": "Value error, other must be ok",
+                            "type": "value_error",
+                            "url": re.compile(
+                                r"https://errors\.pydantic\.dev/.*/v/value_error"
+                            ),
+                            "ctx": {
+                                "error": {
+                                    "message": "other must be ok",
+                                    "type": "ValueError",
+                                }
+                            },
+                        }
+                    ]
+                }
+            },
+            response.json,
+        )
