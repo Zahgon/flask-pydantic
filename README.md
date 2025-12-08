@@ -141,6 +141,7 @@ def get(query: QueryModel):
 ### Example 2: URL path parameter
 
 ```python
+# Example 2: URL path parameter only
 @app.route("/character/<character_id>/", methods=["GET"])
 @validate()
 def get_character(character_id: int):
@@ -164,7 +165,7 @@ class RequestBodyModel(BaseModel):
   name: str
   nickname: Optional[str] = None
 
-# Example2: request body only
+# Example 3: request body only
 @app.route("/", methods=["POST"])
 @validate()
 def post(body: RequestBodyModel):
@@ -182,7 +183,7 @@ def post(body: RequestBodyModel):
 ### Example 4: BOTH query paramaters and request body
 
 ```python
-# Example 3: both query paramters and request body
+# Example 4: both query paramters and request body
 @app.route("/both", methods=["POST"])
 @validate()
 def get_and_post(body: RequestBodyModel, query: QueryModel):
@@ -207,7 +208,7 @@ class RequestFormDataModel(BaseModel):
   name: str
   nickname: Optional[str] = None
 
-# Example2: request body only
+# Example 5: request form only
 @app.route("/", methods=["POST"])
 @validate()
 def post(form: RequestFormDataModel):
