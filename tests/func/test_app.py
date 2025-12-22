@@ -1,6 +1,7 @@
 import asyncio
 import re
-from typing import List, Optional
+from functools import wraps
+from typing import Any, Callable, List, Optional
 
 import pytest
 from flask import jsonify, request
@@ -87,6 +88,27 @@ def app_with_untyped_path_param_route(app):
     @validate()
     def int_path_param(obj_id):
         return IdObj(id=obj_id)
+
+
+@pytest.fixture
+def app_with_path_param_route_and_injector(app):
+    class Injectable:
+        def __init__(self, foo: str):
+            self.foo = foo
+
+    def inject(fun: Callable) -> Callable:
+        @wraps(fun)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            kwargs["injectable"] = Injectable("injected")
+            return fun(*args, **kwargs)
+
+        return wrapper
+
+    @app.route("/path_param/<obj_id>/", methods=["GET"])
+    @inject
+    @validate()
+    def int_path_param(obj_id: int, injectable: Injectable):
+        return {"id": obj_id, "injectable": injectable.foo}
 
 
 @pytest.fixture
@@ -427,6 +449,36 @@ class TestPathUnannotatedParameter:
         response = client.get(f"/path_param/{id_}/")
 
         assert_matches(expected_response, response.json)
+
+
+@pytest.mark.usefixtures("app_with_path_param_route_and_injector")
+class TestPathIntParameterAndInjector:
+    def test_correct_param_passes(self, client):
+        id_ = 12
+        expected_response = {"id": id_, "injectable": "injected"}
+        response = client.get(f"/path_param/{id_}/")
+        assert_matches(expected_response, response.json)
+
+    def test_string_parameter(self, client):
+        expected_response = {
+            "validation_error": {
+                "path_params": [
+                    {
+                        "input": "not_an_int",
+                        "loc": ["obj_id"],
+                        "msg": "Input should be a valid integer, unable to parse string as an integer",
+                        "type": "int_parsing",
+                        "url": re.compile(
+                            r"https://errors\.pydantic\.dev/.*/v/int_parsing"
+                        ),
+                    }
+                ]
+            }
+        }
+        response = client.get("/path_param/not_an_int/")
+
+        assert_matches(expected_response, response.json)
+        assert response.status_code == 400
 
 
 @pytest.mark.usefixtures("app_with_optional_body")

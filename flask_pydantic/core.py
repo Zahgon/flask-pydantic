@@ -86,8 +86,12 @@ def validate_many_models(
 def validate_path_params(func: Callable, kwargs: dict) -> Tuple[dict, list]:
     errors = []
     validated = {}
+    # Only validate parameters that are actual path parameters from the route
+    # request.view_args contains only the path parameters extracted from the URL
+    path_param_names = set(request.view_args.keys()) if request.view_args else set()
+
     for name, type_ in func.__annotations__.items():
-        if name in {"query", "body", "form", "return"}:
+        if name not in path_param_names:
             continue
         try:
             if not isinstance(type_, V1BaseModel):
