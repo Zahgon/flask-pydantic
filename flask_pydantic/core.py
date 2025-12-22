@@ -31,6 +31,22 @@ def _model_dump_json(model: V1OrV2BaseModel, **kwargs):
         return model.json(**kwargs)
 
 
+def _sanitize_ctx_errors(errors):
+    """
+    Make Pydantic `ctx["error"]` JSON-serializable by replacing
+    exception instances with {type, message}.
+    """
+    for error in errors:
+        ctx = error.get("ctx")
+        if isinstance(ctx, dict) and isinstance(ctx.get("error"), Exception):
+            exc = ctx["error"]
+            ctx["error"] = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+            }
+    return errors
+
+
 def make_json_response(
     content: Union[V1OrV2BaseModel, Iterable[V1OrV2BaseModel]],
     status_code: int,
@@ -80,7 +96,7 @@ def validate_many_models(
 
         raise ManyModelValidationError(err) from te
     except (ValidationError, V1ValidationError) as ve:
-        raise ManyModelValidationError(ve.errors()) from ve
+        raise ManyModelValidationError(_sanitize_ctx_errors(ve.errors())) from ve
 
 
 def validate_path_params(func: Callable, kwargs: dict) -> Tuple[dict, list]:
@@ -200,7 +216,7 @@ def validate(
                 try:
                     q = query_model(**query_params)
                 except (ValidationError, V1ValidationError) as ve:
-                    err["query_params"] = ve.errors()
+                    err["query_params"] = _sanitize_ctx_errors(ve.errors())
             body_in_kwargs = func.__annotations__.get("body")
             body_model = body_in_kwargs or body
             if body_model:
@@ -212,12 +228,12 @@ def validate(
                     try:
                         b = body_model(__root__=body_params).__root__
                     except (ValidationError, V1ValidationError) as ve:
-                        err["body_params"] = ve.errors()
+                        err["body_params"] = _sanitize_ctx_errors(ve.errors())
                 elif issubclass(body_model, RootModel):
                     try:
                         b = body_model(body_params)
                     except (ValidationError, V1ValidationError) as ve:
-                        err["body_params"] = ve.errors()
+                        err["body_params"] = _sanitize_ctx_errors(ve.errors())
                 elif request_body_many:
                     try:
                         b = validate_many_models(body_model, body_params)
@@ -234,7 +250,7 @@ def validate(
                         else:
                             raise JsonBodyParsingError() from te
                     except (ValidationError, V1ValidationError) as ve:
-                        err["body_params"] = ve.errors()
+                        err["body_params"] = _sanitize_ctx_errors(ve.errors())
             form_in_kwargs = func.__annotations__.get("form")
             form_model = form_in_kwargs or form
             if form_model:
@@ -246,12 +262,12 @@ def validate(
                     try:
                         f = form_model(form_params)
                     except (ValidationError, V1ValidationError) as ve:
-                        err["form_params"] = ve.errors()
+                        err["form_params"] = _sanitize_ctx_errors(ve.errors())
                 elif issubclass(form_model, RootModel):
                     try:
                         f = form_model(form_params)
                     except (ValidationError, V1ValidationError) as ve:
-                        err["form_params"] = ve.errors()
+                        err["form_params"] = _sanitize_ctx_errors(ve.errors())
                 else:
                     try:
                         f = form_model(**form_params)
@@ -263,7 +279,7 @@ def validate(
                         else:
                             raise JsonBodyParsingError from te
                     except (ValidationError, V1ValidationError) as ve:
-                        err["form_params"] = ve.errors()
+                        err["form_params"] = _sanitize_ctx_errors(ve.errors())
             request.query_params = q
             request.body_params = b
             request.form_params = f
