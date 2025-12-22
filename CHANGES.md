@@ -1,6 +1,15 @@
-## Version 0.14.0-dev
+## Version 0.15.0 
 
 Unreleased
+
+## Version 0.14.0
+
+Released 2025-12-21
+
+Bug Fixes
+
+- Fix error serialization (@littlehongman)
+- Only validate flask params (@LouisTrezzini)
 
 ## Version 0.13.2
 
