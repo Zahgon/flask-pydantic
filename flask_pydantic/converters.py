@@ -29,12 +29,6 @@ sequence_types = {
 }
 
 
-def _is_sequence(type_: Type) -> bool:
-    origin = get_origin(type_) or type_
-    if origin is Union or origin is UnionType:
-        return any(_is_sequence(t) for t in get_args(type_))
-
-    return origin in sequence_types and origin not in (str, bytes)
 
 
 def convert_query_params(
@@ -47,22 +41,4 @@ def convert_query_params(
     :param model: query parameter's model
     :return: resulting parameters
     """
-    if issubclass(model, BaseModel):
-        return {
-            **query_params.to_dict(),
-            **{
-                key: value
-                for key, value in query_params.to_dict(flat=False).items()
-                if key in model.model_fields
-                and _is_sequence(model.model_fields[key].annotation)
-            },
-        }
-    else:
-        return {
-            **query_params.to_dict(),
-            **{
-                key: value
-                for key, value in query_params.to_dict(flat=False).items()
-                if key in model.__fields__ and model.__fields__[key].is_complex()
-            },
-        }
+    pass

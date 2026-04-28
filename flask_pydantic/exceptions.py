@@ -28,8 +28,6 @@ class ManyModelValidationError(BaseFlaskPydanticException):
         self._errors = errors
         super().__init__(*args)
 
-    def errors(self):
-        return self._errors
 
 
 class ValidationError(BaseFlaskPydanticException):
